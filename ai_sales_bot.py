@@ -26,7 +26,7 @@ RSS_FEEDS = [
 
 # ================= ИИ через Groq =================
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
-MODEL = "llama-3.1-8b-instant"
+MODEL = "openai/gpt-oss-120b"
 
 # ================= ПРОМПТ ДЛЯ ПОСТА =================
 SYSTEM_PROMPT = """Ты — редактор Telegram-канала «AI-отдел продаж».
