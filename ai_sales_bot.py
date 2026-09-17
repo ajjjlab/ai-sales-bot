@@ -7,65 +7,65 @@ import requests
 import urllib.parse
 from datetime import datetime
 
-# ================= НАСТРОЙКИ (из переменных окружения) =================
+# ================= НАСТРОЙКИ =================
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "")
 CHANNEL_ID = os.environ.get("CHANNEL_ID", "")
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 
-# ================= ИСТОЧНИКИ (российские + мировые) =================
+# ================= ИСТОЧНИКИ =================
 RSS_FEEDS = [
-    # Российские
     "https://habr.com/ru/rss/hubs/artificial_intelligence/all/?fl=ru",
     "https://vc.ru/rss/all",
     "https://rb.ru/feeds/all/",
     "https://www.cnews.ru/inc/rss/news.xml",
-    # Мировые (для контекста — если новость применима в РФ)
     "https://techcrunch.com/category/artificial-intelligence/feed/",
     "https://venturebeat.com/category/ai/feed/",
 ]
 
-# ================= ИИ через Groq =================
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 MODEL = "openai/gpt-oss-120b"
 
 # ================= ПРОМПТ ДЛЯ ПОСТА =================
-SYSTEM_PROMPT = """Ты — редактор Telegram-канала «AI-отдел продаж».
-Канал читают российские B2B-предприниматели, руководители отделов продаж и владельцы бизнеса.
+SYSTEM_PROMPT = """Ты — автор Telegram-канала «AI-отдел продаж».
+Канал читают российские B2B-предприниматели, руководители отделов продаж, владельцы бизнеса.
 
-Тема канала: автоматизация B2B-продаж с помощью ИИ. Кейсы, промпты, инструменты.
+Тема: автоматизация B2B-продаж с помощью ИИ. Кейсы, промпты, инструменты.
 
 КРИТИЧЕСКИ ВАЖНО:
 - Отбирай только новости, применимые в России. Если инструмент недоступен в РФ — упомяни российский аналог или пропусти новость.
-- Пиши на русском, без англицизмов, где можно использовать русское слово.
-- Не используй ссылки на западные сервисы, которые не работают в РФ (OpenAI, ChatGPT, Claude и т.д. — упоминай только как контекст).
+- Пиши на русском, живо и по делу. Без англицизмов, где есть русские слова.
+- НЕ пересказывай новость сухо. Дай свой взгляд: почему это важно, как применить, что делать.
 
-Стиль: энергичный, но без воды. Профессионально, но по-человечески.
+Стиль: энергичный, экспертный, но по-человечески. Как будто пишешь другу-предпринимателю.
 
 Структура поста:
-1. Заголовок с эмодзи (1 строка).
-2. Суть новости — 2–3 предложения простым языком.
-3. Почему это важно для российских B2B-продаж — 1–2 предложения.
-4. Практический совет или вывод — 1 предложение.
-5. Финальная строка с хэштегами: #AI #Продажи #Автоматизация
+1. Заголовок с эмодзи (1 строка, цепляющий).
+2. Что случилось — 1–2 предложения.
+3. Что это значит для российского B2B — 2–3 предложения с конкретикой.
+4. Мини-чеклист из 3 пунктов: «Что сделать уже сегодня» (каждый пункт с новой строки, начинается с ✅).
+5. Финальная строка: «💾 Сохрани в закладки, чтобы не потерять» — она всегда одинаковая, не меняй её.
+6. Хэштеги: #AI #Продажи #Автоматизация
 
-Длина: до 900 символов. Без markdown-звёздочек и ссылок."""
+Длина: до 1100 символов. Без markdown-звёздочек и ссылок."""
 
 # ================= ПРОМПТ ДЛЯ КАРТИНКИ =================
-IMAGE_PROMPT_SYSTEM = """Ты — арт-директор Telegram-канала про ИИ и продажи.
-На основе поста придумай короткий промпт (на английском) для генерации картинки.
+IMAGE_PROMPT_SYSTEM = """Ты — арт-директор канала про ИИ и продажи.
+Придумай короткий промпт (на английском) для генерации картинки к посту.
 
 Требования:
 - Стиль: современный, минималистичный, деловой, технологичный.
-- Без текста на картинке, без логотипов, без лиц людей.
-- Абстрактные образы: нейросети, потоки данных, графики, интерфейсы, роботы-помощники.
-- Длина промпта: 15–25 слов.
-- Только промпт, без объяснений и кавычек.
+- Без текста, без логотипов, без лиц людей.
+- Абстрактные образы: нейросети, потоки данных, графики, интерфейсы, роботы.
+- 15–25 слов. Только промпт, без кавычек и объяснений.
 
 Пример: futuristic abstract visualization of AI automating sales pipeline, minimalistic blue and purple gradient, geometric shapes, business tech style, 4k"""
 
+# Запасной промпт, если Groq не ответит
+FALLBACK_IMAGE_PROMPT = "abstract futuristic AI neural network, business technology, blue and purple gradient, minimalist, 4k"
 
-def groq_request(messages, temperature=0.7, max_tokens=700):
-    """Универсальный запрос к Groq через requests."""
+
+def groq_request(messages, temperature=0.7, max_tokens=800):
+    """Запрос к Groq через requests."""
     headers = {
         "Authorization": f"Bearer {GROQ_API_KEY}",
         "Content-Type": "application/json",
@@ -86,6 +86,7 @@ def groq_request(messages, temperature=0.7, max_tokens=700):
 
 
 def get_latest_news():
+    """Собирает свежие новости из всех RSS-лент."""
     all_news = []
     for url in RSS_FEEDS:
         try:
@@ -101,6 +102,7 @@ def get_latest_news():
 
 
 def pick_best_news(news_list):
+    """Просим ИИ выбрать самую релевантную новость."""
     if not news_list:
         return None
     news_text = "\n\n".join([f"- {n['title']}\n{n['summary']}" for n in news_list[:20]])
@@ -109,7 +111,7 @@ def pick_best_news(news_list):
 Критерии:
 - Тема применима в России (не про сервисы, недоступные в РФ).
 - Связана с продажами, автоматизацией, B2B, ИИ-инструментами.
-- Свежая и практичная.
+- Свежая и практичная, есть что обсудить.
 
 Верни её текст в формате:
 ЗАГОЛОВОК: ...
@@ -125,19 +127,19 @@ def pick_best_news(news_list):
 
 
 def generate_post(selected_news):
+    """Превращает выбранную новость в готовый пост для канала."""
     return groq_request(
         [
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": f"Сделай пост на основе этой новости:\n\n{selected_news}"},
         ],
-        temperature=0.7,
-        max_tokens=700,
+        temperature=0.8,
+        max_tokens=900,
     )
 
 
 def generate_image_url(post_text):
-    """Генерирует промпт для картинки и возвращает URL готового изображения."""
-    # 1. Просим Groq придумать промпт для картинки
+    """Генерирует промпт для картинки и возвращает URL. Всегда возвращает URL."""
     image_prompt = groq_request(
         [
             {"role": "system", "content": IMAGE_PROMPT_SYSTEM},
@@ -146,19 +148,21 @@ def generate_image_url(post_text):
         temperature=0.8,
         max_tokens=100,
     )
+
     if not image_prompt:
-        return None
+        print("Groq не дал промпт — используем fallback")
+        image_prompt = FALLBACK_IMAGE_PROMPT
+    else:
+        image_prompt = image_prompt.strip().strip('"').strip("'")
 
-    image_prompt = image_prompt.strip().strip('"').strip("'")
     print(f"Промпт картинки: {image_prompt}")
-
-    # 2. Кодируем и формируем URL для Pollinations AI
     encoded = urllib.parse.quote(image_prompt)
     url = f"https://image.pollinations.ai/prompt/{encoded}?width=1024&height=576&nologo=true&seed={int(time.time())}"
     return url
 
 
 def publish():
+    """Главный цикл: собрать → выбрать → написать → картинка → опубликовать."""
     print(f"\n[{datetime.now()}] Цикл публикации начался")
     news = get_latest_news()
     print(f"Собрано новостей: {len(news)}")
@@ -182,8 +186,7 @@ def publish():
 
     try:
         if image_url:
-            # Скачиваем картинку, чтобы отправить файлом (надёжнее, чем по URL)
-            img_data = requests.get(image_url, timeout=60).content
+            img_data = requests.get(image_url, timeout=90).content
             bot.send_photo(
                 chat_id=CHANNEL_ID,
                 photo=img_data,
@@ -193,6 +196,7 @@ def publish():
         else:
             bot.send_message(chat_id=CHANNEL_ID, text=post)
             print("✅ Пост (без картинки) опубликован!")
+
         print("---")
         print(post)
         print("---")
