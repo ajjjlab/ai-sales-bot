@@ -25,7 +25,6 @@ RSS_FEEDS = [
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 MODEL = "openai/gpt-oss-120b"
 
-# ================= ПРОМПТ ДЛЯ ПОСТА =================
 SYSTEM_PROMPT = """Ты — автор Telegram-канала «AI-отдел продаж».
 Канал читают российские B2B-предприниматели, руководители отделов продаж, владельцы бизнеса.
 
@@ -48,7 +47,6 @@ SYSTEM_PROMPT = """Ты — автор Telegram-канала «AI-отдел п�
 
 Длина: до 1100 символов. Без markdown-звёздочек и ссылок."""
 
-# ================= ПРОМПТ ДЛЯ КАРТИНКИ =================
 IMAGE_PROMPT_SYSTEM = """Ты — арт-директор канала про ИИ и продажи.
 Придумай короткий промпт (на английском) для генерации картинки к посту.
 
@@ -60,12 +58,10 @@ IMAGE_PROMPT_SYSTEM = """Ты — арт-директор канала про И
 
 Пример: futuristic abstract visualization of AI automating sales pipeline, minimalistic blue and purple gradient, geometric shapes, business tech style, 4k"""
 
-# Запасной промпт, если Groq не ответит
 FALLBACK_IMAGE_PROMPT = "abstract futuristic AI neural network, business technology, blue and purple gradient, minimalist, 4k"
 
 
 def groq_request(messages, temperature=0.7, max_tokens=800):
-    """Запрос к Groq через requests."""
     headers = {
         "Authorization": f"Bearer {GROQ_API_KEY}",
         "Content-Type": "application/json",
@@ -86,7 +82,6 @@ def groq_request(messages, temperature=0.7, max_tokens=800):
 
 
 def get_latest_news():
-    """Собирает свежие новости из всех RSS-лент."""
     all_news = []
     for url in RSS_FEEDS:
         try:
@@ -102,7 +97,6 @@ def get_latest_news():
 
 
 def pick_best_news(news_list):
-    """Просим ИИ выбрать самую релевантную новость."""
     if not news_list:
         return None
     news_text = "\n\n".join([f"- {n['title']}\n{n['summary']}" for n in news_list[:20]])
@@ -127,7 +121,6 @@ def pick_best_news(news_list):
 
 
 def generate_post(selected_news):
-    """Превращает выбранную новость в готовый пост для канала."""
     return groq_request(
         [
             {"role": "system", "content": SYSTEM_PROMPT},
@@ -139,7 +132,6 @@ def generate_post(selected_news):
 
 
 def generate_image_url(post_text):
-    """Генерирует промпт для картинки и возвращает URL. Всегда возвращает URL."""
     image_prompt = groq_request(
         [
             {"role": "system", "content": IMAGE_PROMPT_SYSTEM},
@@ -162,7 +154,6 @@ def generate_image_url(post_text):
 
 
 def publish():
-    """Главный цикл: собрать → выбрать → написать → картинка → опубликовать."""
     print(f"\n[{datetime.now()}] Цикл публикации начался")
     news = get_latest_news()
     print(f"Собрано новостей: {len(news)}")
@@ -187,12 +178,20 @@ def publish():
     try:
         if image_url:
             img_data = requests.get(image_url, timeout=90).content
-            bot.send_photo(
-                chat_id=CHANNEL_ID,
-                photo=img_data,
-                caption=post,
-            )
-            print("✅ Пост с картинкой опубликован!")
+            if len(post) <= 1024:
+                bot.send_photo(
+                    chat_id=CHANNEL_ID,
+                    photo=img_data,
+                    caption=post,
+                )
+                print("✅ Пост с картинкой опубликован!")
+            else:
+                bot.send_photo(
+                    chat_id=CHANNEL_ID,
+                    photo=img_data,
+                )
+                bot.send_message(chat_id=CHANNEL_ID, text=post)
+                print(f"✅ Пост с картинкой + текстом опубликован (длина: {len(post)})")
         else:
             bot.send_message(chat_id=CHANNEL_ID, text=post)
             print("✅ Пост (без картинки) опубликован!")
@@ -209,7 +208,7 @@ publish()
 schedule.every(6).hours.do(publish)
 
 print("\n🚀 Бот запущен. Следующая публикация — через 6 часов.")
-print("Не закрывай Termux. Для остановки нажми Ctrl+C.\n")
+print("Для остановки нажми Ctrl+C.\n")
 
 while True:
     schedule.run_pending()
